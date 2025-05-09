@@ -3,55 +3,56 @@ from snowflake.snowpark.functions import col
 import requests
 import pandas as pd
 
-# App title
+# Title and instruction
 st.title("🥤 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Input for name
-name_on_order = st.text_input("Name on Smoothie")
-st.write("The name on your smoothie will be", name_on_order)
+# Text input
+name_on_order = st.text_input("Name on Smothee")
+st.write("The name on your smothee will be", name_on_order)
 
-# Snowflake connection
+# Connect to Snowflake and get fruit options with SEARCH_ON
 cnx = st.connection("snowflake")
 session = cnx.session()
-my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'))
+my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
 
-# Multiselect for fruits
+# Convert to Pandas
+pd_df = my_dataframe.to_pandas()
+
+# Multiselect - show GUI-friendly names
 ingredients_list = st.multiselect(
     'Choose up to 5 ingredients:',
-    my_dataframe,
+    pd_df['FRUIT_NAME'],
     max_selections=5
 )
 
-# Process selected fruits
+# Submit logic
 if ingredients_list:
     ingredients_string = ''
-    nutrition_data = []
-
+    
     for fruit_chosen in ingredients_list:
         ingredients_string += fruit_chosen + ' '
-        
-        # Call API for each fruit
-        response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{fruit_chosen}")
-        fruit_info = response.json()
-        nutrition_data.append(fruit_info)
 
-    # Display selected fruit string
+        # Map GUI name to actual search value
+        search_on = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
+        
+        st.subheader(fruit_chosen + ' Nutrition Information')
+        fruityvice_response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{search_on}")
+        fv_df = st.dataframe(data=fruityvice_response.json(), use_container_width=True)
+
+    # Show order string
     st.write(ingredients_string)
 
-    # Insert order to Snowflake
+    # Prepare insert query
     my_insert_stmt = f"""
-        insert into smoothies.public.orders(ingredients, name_on_order)
-        values ('{ingredients_string}', '{name_on_order}')
+    insert into smoothies.public.orders(ingredients, name_on_order)
+    values ('{ingredients_string.strip()}','{name_on_order}')
     """
     st.write(my_insert_stmt)
 
-    time_to_convert = st.button('Submit Order')
-
+    # Insert button
+    time_to_convert = st.button('submit order')
     if time_to_convert:
         session.sql(my_insert_stmt).collect()
         st.success('Your Smoothie is ordered!', icon="✅")
 
-    # Show nutrition data
-    sf_df = pd.DataFrame(nutrition_data)
-    st.dataframe(sf_df, use_container_width=True)
