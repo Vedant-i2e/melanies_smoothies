@@ -3,54 +3,55 @@ from snowflake.snowpark.functions import col
 import requests
 import pandas as pd
 
-# Title and instruction
+# Title and instructions
 st.title("🥤 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Text input
+# Name input
 name_on_order = st.text_input("Name on Smothee")
 st.write("The name on your smothee will be", name_on_order)
 
-# Connect to Snowflake and get fruit options with SEARCH_ON
+# Snowflake connection and table pull
 cnx = st.connection("snowflake")
 session = cnx.session()
-my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
 
-# Convert to Pandas
+# Get fruit data (GUI name + actual API search value)
+my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
 pd_df = my_dataframe.to_pandas()
 
-# Multiselect - show GUI-friendly names
+# Multiselect with GUI-friendly labels
 ingredients_list = st.multiselect(
     'Choose up to 5 ingredients:',
     pd_df['FRUIT_NAME'],
     max_selections=5
 )
 
-# Submit logic
+# If fruits selected
 if ingredients_list:
     ingredients_string = ''
     
     for fruit_chosen in ingredients_list:
         ingredients_string += fruit_chosen + ' '
 
-        # Map GUI name to actual search value
+        # Match GUI name to API name using SEARCH_ON
         search_on = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
-        
+
         st.subheader(fruit_chosen + ' Nutrition Information')
         fruityvice_response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{search_on}")
-        fv_df = st.dataframe(data=fruityvice_response.json(), use_container_width=True)
+        st.dataframe(data=fruityvice_response.json(), use_container_width=True)
 
-    # Show order string
+    # Final clean string for insert
+    ingredients_string = ingredients_string.strip()
     st.write(ingredients_string)
 
-    # Prepare insert query
+    # Build SQL insert
     my_insert_stmt = f"""
-    insert into smoothies.public.orders(ingredients, name_on_order)
-    values ('{ingredients_string.strip()}','{name_on_order}')
+        insert into smoothies.public.orders(ingredients, name_on_order)
+        values ('{ingredients_string}', '{name_on_order}')
     """
     st.write(my_insert_stmt)
 
-    # Insert button
+    # Submit button
     time_to_convert = st.button('submit order')
     if time_to_convert:
         session.sql(my_insert_stmt).collect()
