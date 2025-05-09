@@ -15,7 +15,7 @@ session = cnx.session()
 # Input name
 name_on_order = st.text_input('Name on Smoothie:')
 
-# Load fruit options
+# Load fruit options from Snowflake
 my_dataframe = session.table("smoothies.public.fruit_options").select(
     col('FRUIT_NAME'), col('SEARCH_ON')
 )
@@ -36,23 +36,24 @@ if ingredient_list:
         
         # Get correct search name for API
         search_on = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
-        st.write('The search value for', fruit_chosen, 'is', search_on + '.')
+        st.write(f'The search value for {fruit_chosen} is {search_on}.')
 
-        st.subheader(fruit_chosen + ' : Nutrition Information')
+        st.subheader(f"{fruit_chosen} : Nutrition Information")
         
-        # API call using search_on value
-        fruityvice_response = requests.get("https://fruityvice.com/api/fruit/" + search_on)
+        # 🆕 Using SmoothieFroot API
+        smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/" + search_on)
 
-        if fruityvice_response.status_code == 200:
-            fv_data = fruityvice_response.json()
-            st.dataframe(data=pd.json_normalize(fv_data), use_container_width=True)
+        if smoothiefroot_response.status_code == 200:
+            sf_data = smoothiefroot_response.json()
+            st.dataframe(data=pd.json_normalize(sf_data), use_container_width=True)
         else:
             st.error("Nutrition information not found for " + fruit_chosen)
 
-    # Submit button
+    # Insert order into Snowflake
     my_insert_stmt = f"""INSERT INTO smoothies.public.orders (ingredients, name_on_order)
                          VALUES ('{ingredient_string.strip()}', '{name_on_order}')"""
 
     if st.button('Submit Order', type="primary"):
         session.sql(my_insert_stmt).collect()
         st.success('Your Smoothie is ordered! ' + name_on_order, icon="✅")
+
