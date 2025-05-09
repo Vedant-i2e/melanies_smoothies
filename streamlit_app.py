@@ -4,49 +4,55 @@ import requests
 import pandas as pd
 from snowflake.snowpark.functions import col
 
-
-# Write directly to the app
+# Title & description
 st.title("Customize your Smoothie!! :balloon:")
-st.write(
-"""
-This is test!!!
-""")
+st.write("This is test!!!")
 
-cnx=st.connection('snowflake')
+# Snowflake connection
+cnx = st.connection('snowflake')
 session = cnx.session()
 
-name_on_order = st.text_input('Name on Smoothie: ')
+# Input name
+name_on_order = st.text_input('Name on Smoothie:')
 
-my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
+# Load fruit options
+my_dataframe = session.table("smoothies.public.fruit_options").select(
+    col('FRUIT_NAME'), col('SEARCH_ON')
+)
+pd_df = my_dataframe.to_pandas()
 
-pd_df=my_dataframe.to_pandas()
-
-
+# Multiselect ingredients
 ingredient_list = st.multiselect(
-    'Choose upto 5 ingradients: ', my_dataframe
-    , max_selections=5
-    )
+    'Choose up to 5 ingredients:', pd_df['FRUIT_NAME'].tolist(),
+    max_selections=5
+)
 
+# If ingredients are selected
 if ingredient_list:
     ingredient_string = ''
-
+    
     for fruit_chosen in ingredient_list:
         ingredient_string += fruit_chosen + ' '
-
-        search_on=pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
-        st.write('The search value for ', fruit_chosen,' is ', search_on, '.')
         
-        st.subheader(fruit_chosen+ ' : Nutrition Information')
-        fruityvice_response = requests.get("https://fruityvice.com/api/fruit/"+ fruit_chosen)
-        fv_df=st.dataframe(data=fruityvice_response.json(), use_container_width=True)
-        
-    my_insert_stmt = """ insert into smoothies.public.orders(ingredients, name_on_order) values ('""" + ingredient_string + """', '""" + name_on_order + """')"""
- 
-    time_to_submit = st.button('Submit Order', type="primary")
+        # Get correct search name for API
+        search_on = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
+        st.write('The search value for', fruit_chosen, 'is', search_on + '.')
 
-    if time_to_submit:
+        st.subheader(fruit_chosen + ' : Nutrition Information')
+        
+        # API call using search_on value
+        fruityvice_response = requests.get("https://fruityvice.com/api/fruit/" + search_on)
+
+        if fruityvice_response.status_code == 200:
+            fv_data = fruityvice_response.json()
+            st.dataframe(data=pd.json_normalize(fv_data), use_container_width=True)
+        else:
+            st.error("Nutrition information not found for " + fruit_chosen)
+
+    # Submit button
+    my_insert_stmt = f"""INSERT INTO smoothies.public.orders (ingredients, name_on_order)
+                         VALUES ('{ingredient_string.strip()}', '{name_on_order}')"""
+
+    if st.button('Submit Order', type="primary"):
         session.sql(my_insert_stmt).collect()
-        st.success('Your Smoothie is ordered! ' +name_on_order, icon="✅")
-
-
-
+        st.success('Your Smoothie is ordered! ' + name_on_order, icon="✅")
