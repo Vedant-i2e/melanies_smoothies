@@ -1,57 +1,52 @@
+# Import python packages
 import streamlit as st
-from snowflake.snowpark.functions import col
 import requests
 import pandas as pd
+from snowflake.snowpark.functions import col
 
-# Title and instructions
-st.title("🥤 Customize Your Smoothie! 🥤")
-st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Text input
-name_on_order = st.text_input("Name on Smothee")
-st.write("The name on your smothee will be", name_on_order)
+# Write directly to the app
+st.title("Customize your Smoothie!! :balloon:")
+st.write(
+"""
+This is test!!!
+""")
 
-# Connect to Snowflake and get fruit options
-cnx = st.connection("snowflake")
+cnx=st.connection('snowflake')
 session = cnx.session()
+
+name_on_order = st.text_input('Name on Smoothie: ')
+
 my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
 
-# Convert to Pandas
-pd_df = my_dataframe.to_pandas()
+pd_df=my_dataframe.to_pandas()
 
-# Multiselect - GUI-friendly names
-ingredients_list = st.multiselect(
-    'Choose up to 5 ingredients:',
-    pd_df['FRUIT_NAME'],
-    max_selections=5
-)
 
-# Submit logic
-if ingredients_list:
-    ingredients_string = ''
+ingredient_list = st.multiselect(
+    'Choose upto 5 ingradients: ', my_dataframe
+    , max_selections=5
+    )
 
-    for fruit_chosen in ingredients_list:
-        ingredients_string += fruit_chosen + ','  # 👈 comma separator
-        search_on = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
+if ingredient_list:
+    ingredient_string = ''
 
-        st.subheader(fruit_chosen + ' Nutrition Information')
-        fruityvice_response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{search_on}")
-        fv_df = st.dataframe(data=fruityvice_response.json(), use_container_width=True)
+    for fruit_chosen in ingredient_list:
+        ingredient_string += fruit_chosen + ' '
 
-    # Remove trailing comma
-    cleaned_ingredients = ingredients_string.rstrip(',')
-    st.write(cleaned_ingredients)
+        search_on=pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
+        st.write('The search value for ', fruit_chosen,' is ', search_on, '.')
+        
+        st.subheader(fruit_chosen+ ' : Nutrition Information')
+        fruityvice_response = requests.get("https://fruityvice.com/api/fruit/"+ fruit_chosen)
+        fv_df=st.dataframe(data=fruityvice_response.json(), use_container_width=True)
+        
+    my_insert_stmt = """ insert into smoothies.public.orders(ingredients, name_on_order) values ('""" + ingredient_string + """', '""" + name_on_order + """')"""
+ 
+    time_to_submit = st.button('Submit Order', type="primary")
 
-    # Final insert SQL
-    my_insert_stmt = f"""
-    insert into smoothies.public.orders(ingredients, name_on_order)
-    values ('{cleaned_ingredients}','{name_on_order}')
-    """
-    st.write(my_insert_stmt)
-
-    # Button
-    time_to_convert = st.button('submit order')
-    if time_to_convert:
+    if time_to_submit:
         session.sql(my_insert_stmt).collect()
-        st.success('✅ Your Smoothie is ordered!', icon="✅")
+        st.success('Your Smoothie is ordered! ' +name_on_order, icon="✅")
+
+
 
